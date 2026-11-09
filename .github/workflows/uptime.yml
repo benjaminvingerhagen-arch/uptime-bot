@@ -1,0 +1,45 @@
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # hvert 5. minutt (GitHub kan forsinke kjøringer noen minutter)
+  workflow_dispatch:         # lar deg kjøre sjekken manuelt fra Actions-fanen
+
+permissions:
+  issues: write
+  actions: write
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sjekk sidene
+        run: node check.mjs
+
+      - name: Varsle (åpne/lukke saker)
+        run: node alert.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # GitHub slår av planlagte workflows etter 60 dager uten aktivitet i repoet.
+      # Dette holder den i live ved å aktivere workflowen på nytt én gang i døgnet.
+      - name: Hold workflowen aktiv
+        if: github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *'
+        run: |
+          if [ "$(date -u +%H%M)" \< "0005" ]; then
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/uptime.yml/enable"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
